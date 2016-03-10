@@ -1,0 +1,99 @@
+%im1=imread('Mars-1.jpg');
+%im2=imread('Mars-2.jpg');
+
+glob_xmax = 998922.8583969474;
+glob_xmin = 962712.3320811579;
+glob_xcnt = (glob_xmax+glob_xmin)/2;
+glob_ymax = 7506121.700017895;
+glob_ymin = 7468437.489491579;
+glob_ycnt = (glob_ymax+glob_ymin)/2;
+%grid_inc = 30;
+no_glob_xgrid = round((glob_xmax - glob_xmin)/30);
+no_glob_ygrid = round((glob_ymax - glob_ymin)/30);
+glob_x = linspace(glob_xmin, glob_xmax, no_glob_xgrid);
+glob_y = linspace(glob_ymin, glob_ymax, no_glob_ygrid);
+
+gfilter = fspecial('gaussian', 16, 4);
+
+im1 = read_arr('/home/bgcho/CourseWork/6_869/Project/raw_images/fora2014jd054t143319.arr');
+im1 = flipud(im1);
+%im1 = (im1-min(min(im1)))*255/(max(max(im1))-min(min(im1)));
+run('/home/bgcho/CourseWork/6_869/Project/raw_images/fora2014jd054t143319.m')
+grid_x1 = [grid_xmin:grid_inc:grid_xmax];
+grid_y1 = [grid_ymin:grid_inc:grid_ymax];
+[~, xcnt_indx1] = min(abs(glob_xcnt-grid_x1));
+[~, ycnt_indx1] = min(abs(glob_ycnt-grid_y1));
+indx_x1 = [xcnt_indx1-floor((no_glob_xgrid-1)/2):xcnt_indx1+ceil((no_glob_xgrid-1)/2)];
+indx_y1 = [ycnt_indx1-floor((no_glob_ygrid-1)/2):ycnt_indx1+ceil((no_glob_ygrid-1)/2)];
+im1 = im1(indx_x1, indx_y1);
+im1 = 10*log10(conv2(10.^(im1/10), gfilter,'same'));
+
+im2 = read_arr('/home/bgcho/CourseWork/6_869/Project/raw_images/fora2014jd054t143459.arr');
+im2 = flipud(im2);
+%im2 = (im2-min(min(im2)))*255/(max(max(im2))-min(min(im2)));
+run('/home/bgcho/CourseWork/6_869/Project/raw_images/fora2014jd054t143459.m')
+grid_x2 = [grid_xmin:grid_inc:grid_xmax];
+grid_y2 = [grid_ymin:grid_inc:grid_ymax];
+[~, xcnt_indx2] = min(abs(glob_xcnt-grid_x2));
+[~, ycnt_indx2] = min(abs(glob_ycnt-grid_y2));
+indx_x2 = [xcnt_indx2-floor((no_glob_xgrid-1)/2):xcnt_indx2+ceil((no_glob_xgrid-1)/2)];
+indx_y2 = [ycnt_indx2-floor((no_glob_ygrid-1)/2):ycnt_indx2+ceil((no_glob_ygrid-1)/2)];
+im2 = im2(indx_x2, indx_y2);
+im2 = 10*log10(conv2(10.^(im2/10), gfilter,'same'));
+
+
+im1=imresize(imfilter(im1,fspecial('gaussian',7,1.),'same','replicate'),0.5,'bicubic');
+im2=imresize(imfilter(im2,fspecial('gaussian',7,1.),'same','replicate'),0.5,'bicubic');
+
+im1=im2double(im1);
+im2=im2double(im2);
+
+%figure;imshow(im1);figure;imshow(im2);
+
+cellsize=3;
+gridspacing=1;
+
+addpath(fullfile(pwd,SIFTflow,'mexDenseSIFT'));
+addpath(fullfile(pwd,SIFTflow,'mexDiscreteFlow'));
+
+sift1 = mexDenseSIFT(im1,cellsize,gridspacing);
+sift2 = mexDenseSIFT(im2,cellsize,gridspacing);
+
+SIFTflowpara.alpha=2*255;
+SIFTflowpara.d=40*255;
+SIFTflowpara.gamma=0.005*255;
+SIFTflowpara.nlevels=4;
+SIFTflowpara.wsize=2;
+SIFTflowpara.topwsize=10;
+SIFTflowpara.nTopIterations = 60;
+SIFTflowpara.nIterations= 30;
+
+
+tic;[vx,vy,energylist]=SIFTflowc2f(sift1,sift2,SIFTflowpara);toc
+
+warpI2=warpImage(im2,vx,vy);
+%figure;imshow(im1);figure;imshow(warpI2);
+figure;imagesc(im1);figure;imagesc(warpI2);
+
+% display flow
+clear flow;
+flow(:,:,1)=vx;
+flow(:,:,2)=vy;
+figure;imshow(flowToColor(flow));
+
+%return;
+
+% this is the code doing the brute force matching
+alpha = 2*255;
+tic;[flow2,energylist2]=mexDiscreteFlow(sift1,sift2,[alpha,alpha*20,60,30]);toc
+figure;imshow(flowToColor(flow2));
+
+
+
+x = [-10:0.1:10];
+y = x;
+[X Y] = meshgrid(x,y);
+uv_flow2color(:,:,1) = X;
+uv_flow2color(:,:,2) = Y;
+figure; imshow(flowToColor(uv_flow2color))
+title('Flow to Color map')
